@@ -3,13 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "One vertical slice of ticket fulfillment: issue a ticket, deliver it through a transactional outbox, and invalidate it exactly once at the gate.",
+  "workspaces": [
+    "api"
+  ],
   "engines": {
     "node": ">=24.0.0"
   },
   "scripts": {
     "setup": "npm install",
-    "check": "npm run test:hooks",
-    "test": "npm run test:hooks",
+    "check": "npm run test:hooks && npm run check --workspaces --if-present",
+    "test": "npm run test:hooks && npm test --workspaces --if-present",
     "test:hooks": "node --test .claude/hooks/hooks.test.mjs"
   },
   "license": "MIT"

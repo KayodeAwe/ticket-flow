@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+
+    // NestJS 12 ships as ES modules, so the API is ESM end to end. Relative imports carry a
+    // `.js` extension because that is what Node resolves at runtime; the compiler maps it
+    // back to the `.ts` source.
+    "verbatimModuleSyntax": true,
+
+    // Nest's dependency injection reads constructor parameter types from decorator metadata.
+    // Node cannot strip decorators the way it strips types, which is why this workspace has
+    // a build step and procure-flow's Express API did not.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    "outDir": "dist",
+    "sourceMap": true
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+}
