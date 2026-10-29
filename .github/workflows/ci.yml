@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A newer push to the same branch cancels the in-progress run rather than queueing behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, unit and integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          # From .nvmrc, so CI and every developer machine cannot drift apart.
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # The API's integration tests start an in-memory MongoDB replica set. Its binary is
+      # ~100 MB; caching it keeps that download out of every run.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # Hook tests, both typechecks, and a production build of the web app.
+      - run: npm run check
+
+      # Hook tests, domain tests, API integration tests (real transactions, real races), and
+      # the web tests.
+      - run: npm test
+
+  e2e:
+    name: End-to-end against the real stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      # Generates .env with random secrets. Compose reads it, and so does Playwright. Nothing
+      # secret is stored in the repository or in repository settings for this.
+      - name: Generate local secrets
+        run: npm run bootstrap
+
+      - name: Start the stack
+        # --wait blocks until every healthcheck passes, so the tests never race the API.
+        run: docker compose up -d --build --wait
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - run: npm run e2e
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

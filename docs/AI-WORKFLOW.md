@@ -105,3 +105,65 @@ operations.
 - **npm 11 now blocks install scripts by default**, so `mongodb-memory-server` did not
   download its MongoDB binary at install time. It fetches it on the first test run instead;
   the test hook timeout allows for that.
+
+---
+
+## Session 3 — 2026-10-29 — HTTP, the React app, and a guard that was wrong
+
+### The secret scanner would have blocked its own repository's tests
+
+The HTTP tests need a JWT signing key. The harness generates one per run —
+`secret: randomBytes(48).toString('base64url')` — so there is no test secret to leak. Reading
+`guard-secrets.mjs` against that line showed the hook would have **blocked** it: its "long
+literal assigned to a secret-shaped name" regex saw `randomBytes(48).toString(` as a
+25-character value.
+
+Worth being exact about how this was found, so it is not overclaimed: not by the hook firing.
+As in procure-flow, project hooks load from the directory a session starts in, and this
+session started elsewhere — so the hook was not running. It was found by reading the rule
+against the code, then confirmed by piping the same payload through the committed hook
+(blocked, exit 2) and the fixed one (allowed, exit 0).
+
+The fix distinguishes a quoted value from an unquoted one: in a source file an unquoted
+right-hand side is an expression, in a YAML or properties file it is the value. Two new hook
+tests pin both sides. A guard that blocks correct code gets disabled within a day, and then it
+guards nothing — which is worse than never having had it.
+
+### The first React test failed for the right reason, eventually
+
+The gate screen's component test failed first with "found multiple elements with the text
+Admit": the verdict panel and the recent-scans list both say it. That is procure-flow's
+`APPROVED` lesson again, and the fix is the same — assert against the verdict panel, never
+against page text.
+
+The second failure was the real bug: two `role="status"` elements, one per test. Testing
+Library only unmounts between tests automatically when Vitest globals are on, and they are
+off here, so each test rendered on top of the previous one's DOM. A test-isolation bug that
+`CLAUDE.md` forbids, invisible until a second test existed. Fixed with an explicit `cleanup`
+in the test setup.
+
+### Smaller things
+
+- **The login controller first destructured a union.** `const { id, ...profile } = user` on a
+  `UserRecord` union loses the discriminant — `Omit` is not distributive — so the scanner's
+  `eventId` would not have typechecked. Rewritten to narrow on `user.role` directly.
+- **The API refuses a weak `JWT_SECRET` before binding a port.** Checked against the built
+  ESM output, not just the source: `JWT_SECRET=short node dist/main.js` exits with the
+  variable named.
+
+### Not yet verified, and why
+
+At the end of this session the Compose stack and the Playwright journey are written but have
+**not been run**. Docker Desktop was not running, and starting it went wrong: the agent
+launched it a second time when the first launch looked like it had not taken, the second
+backend crashed on startup with a socket it could not access (almost certainly held by the
+first), and the app was then reset to factory defaults from its error dialog.
+
+Recorded here because it is the shape of failure this log exists to catch: a tool that
+"looked like it didn't start" being retried instead of checked, by an agent working against a
+machine it does not own. The rule taken from it: check whether a process is already starting
+before launching it again, and leave the user's desktop applications to the user.
+
+Everything from the domain to the HTTP contract is verified by the unit and integration
+suites against a real MongoDB replica set. The containers, the nginx proxy, the dispatcher
+talking to real SMTP, and the browser journey are not — until the stack has been brought up.
