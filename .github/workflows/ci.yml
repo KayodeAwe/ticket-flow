@@ -41,7 +41,8 @@ jobs:
 
   e2e:
     name: End-to-end against the real stack
-    runs-on: ubuntu-latest
+    # mongo:8 refuses to start on Linux kernel 6.19+ (SERVER-121912), which ubuntu-latest now has.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
