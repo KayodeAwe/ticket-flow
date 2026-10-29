@@ -7,7 +7,10 @@
     "node": ">=24.0.0"
   },
   "scripts": {
-    "setup": "npm install"
+    "setup": "npm install",
+    "check": "npm run test:hooks",
+    "test": "npm run test:hooks",
+    "test:hooks": "node --test .claude/hooks/hooks.test.mjs"
   },
   "license": "MIT"
 }
