@@ -7,16 +7,26 @@
     "node": ">=24.0.0"
   },
   "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch --exec \"node --env-file-if-exists=../.env\"",
+    "dev:worker": "nest start --watch --entryFile worker --exec \"node --env-file-if-exists=../.env\"",
+    "start": "node dist/main.js",
+    "start:worker": "node dist/worker.js",
+    "seed": "node --env-file-if-exists=../.env dist/seed.js",
     "check": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },
   "devDependencies": {
+    "@nestjs/cli": "^12.0.11",
     "@nestjs/testing": "^12.3.2",
     "@swc/core": "^1.16.20",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.3.0",
     "@types/nodemailer": "^8.0.2",
     "@types/qrcode": "^1.5.6",
+    "@types/supertest": "^7.2.1",
     "mongodb-memory-server": "^11.3.0",
+    "supertest": "^7.3.1",
     "typescript": "~6.0.3",
     "unplugin-swc": "^2.0.0",
     "vitest": "^5.0.5"
@@ -25,6 +35,10 @@
     "@nestjs/common": "^12.3.2",
     "@nestjs/core": "^12.3.2",
     "@nestjs/mongoose": "^12.0.0",
+    "@nestjs/platform-express": "^12.3.2",
+    "bcryptjs": "^3.0.3",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.4",
     "nodemailer": "^10.3.1",
     "qrcode": "^1.5.4",

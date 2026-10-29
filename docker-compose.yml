@@ -1,0 +1,129 @@
+x-api-build: &api-build
+  context: .
+  dockerfile: api/Dockerfile
+
+x-mongo-uri: &mongo-uri mongodb://mongo:27017/ticketflow?replicaSet=rs0
+
+services:
+  # A single-node REPLICA SET, not a plain mongod.
+  #
+  # Standalone MongoDB has no transactions, and this application writes a ticket, its audit
+  # event and its outbox message in one transaction — and redeems at the gate inside one. That
+  # design decision is what forces a replica set here, even for a one-container local stack.
+  #
+  # The healthcheck doubles as the initiator: it reports healthy only once `rs.status()`
+  # succeeds, and initiates the set on the first run when it does not. That avoids a separate
+  # init container and gives `depends_on: service_healthy` something real to wait for.
+  mongo:
+    image: mongo:8
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    healthcheck:
+      test: >
+        mongosh --quiet --eval "
+          try { rs.status().ok }
+          catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }
+        "
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - '27017:27017'
+
+  # Catches every email the dispatcher sends. Open http://localhost:8025 to see the tickets.
+  mailpit:
+    image: axllent/mailpit:v1.32
+    ports:
+      - '8025:8025'
+      - '1025:1025'
+
+  # One-shot: seeds demo users and events, then exits.
+  seed:
+    build: *api-build
+    command: ['node', 'api/dist/seed.js']
+    environment:
+      # The seed refuses to run in production, and the image defaults to production.
+      NODE_ENV: development
+      MONGODB_URI: *mongo-uri
+      SEED_PASSWORD: ${SEED_PASSWORD:?run "npm run bootstrap" first to generate .env}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    build: *api-build
+    environment:
+      PORT: '3000'
+      MONGODB_URI: *mongo-uri
+      JWT_SECRET: ${JWT_SECRET:?run "npm run bootstrap" first to generate .env}
+      JWT_TTL_MINUTES: '60'
+      CORS_ORIGIN: http://localhost:5173
+      LOG_LEVEL: info
+    depends_on:
+      mongo:
+        condition: service_healthy
+      # Not service_started: the demo is useless until the accounts exist. It is also what
+      # tells `docker compose up --wait` that the seed exiting is the expected end state rather
+      # than a crash — procure-flow learned that one in CI.
+      seed:
+        condition: service_completed_successfully
+    ports:
+      - '3000:3000'
+    # Node's built-in fetch rather than adding curl to the image just to check on it. 127.0.0.1
+    # rather than localhost, which resolves to ::1 first inside Alpine.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # Drains the outbox and emails tickets. Scale it — `--scale dispatcher=3` — and each message
+  # still goes to exactly one replica, because every claim is a single atomic update.
+  dispatcher:
+    build: *api-build
+    command: ['node', 'api/dist/worker.js']
+    environment:
+      MONGODB_URI: *mongo-uri
+      SMTP_HOST: mailpit
+      SMTP_PORT: '1025'
+      MAIL_FROM: tickets@ticket-flow.example.test
+      LOG_LEVEL: info
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    depends_on:
+      # Not service_started: nginx would start when the api *container* exists rather than when
+      # the API is listening, and the first page load would be a 502.
+      api:
+        condition: service_healthy
+    ports:
+      - '8080:80'
+    # 127.0.0.1, not localhost: nginx's `listen 80` is IPv4 only, and localhost inside the
+    # container resolves to ::1 first. procure-flow found this one the hard way.
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', 'http://127.0.0.1:80/']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+volumes:
+  mongo-data:

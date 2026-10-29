@@ -3,17 +3,21 @@
  * must control swapped out: the clock and the mailer.
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 
+import type { INestApplication } from '@nestjs/common';
 import { getConnectionToken, getModelToken, MongooseModule } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { Connection, Model } from 'mongoose';
 import { inject } from 'vitest';
 
+import { configureHttpApp } from '../../src/app.js';
 import { ApplicationModule } from '../../src/application/application.module.js';
 import { DispatchModule } from '../../src/application/dispatch.module.js';
 import { Clock, TicketMailer, type TicketEmail } from '../../src/application/ports.js';
 import { Role } from '../../src/domain/types.js';
+import { AUTH_CONFIG, type AuthConfig } from '../../src/http/auth/token.service.js';
+import { HttpModule } from '../../src/http/http.module.js';
 import {
   EVENT_MODEL,
   USER_MODEL,
@@ -60,36 +64,47 @@ export interface Harness {
   close(): Promise<void>;
 }
 
+export interface HttpHarness extends Harness {
+  readonly app: INestApplication;
+}
+
 /**
- * Build a harness. `imports` defaults to the use-case modules; the HTTP tests pass their own
- * root module instead.
+ * Build the use-case modules (application + dispatcher) against a fresh database, or — with
+ * `http: true` — the real HTTP app exactly as `main.ts` configures it.
  */
-export async function createHarness(
-  imports: NonNullable<Parameters<typeof Test.createTestingModule>[0]['imports']> = [
-    ApplicationModule,
-    DispatchModule,
-  ],
-): Promise<Harness> {
+export async function createHarness(): Promise<Harness>;
+export async function createHarness(options: { http: true }): Promise<HttpHarness>;
+export async function createHarness(options: { http?: boolean } = {}): Promise<Harness | HttpHarness> {
   const clock = new FakeClock(NOW);
   const mailer = new FakeMailer();
 
   const module = await Test.createTestingModule({
     imports: [
       MongooseModule.forRoot(inject('mongoUri'), { dbName: `test_${randomUUID().slice(0, 8)}` }),
-      ...imports,
+      ...(options.http ? [HttpModule] : [ApplicationModule, DispatchModule]),
     ],
   })
     .overrideProvider(Clock)
     .useValue(clock)
     .overrideProvider(TicketMailer)
     .useValue(mailer)
+    .overrideProvider(AUTH_CONFIG)
+    // Generated per run, never written down: there is no test secret to leak.
+    .useValue({ secret: randomBytes(48).toString('base64url'), ttlMinutes: 5 } satisfies AuthConfig)
     .compile();
 
-  await module.init();
+  let app: INestApplication | undefined;
+  if (options.http) {
+    app = module.createNestApplication({ logger: false });
+    configureHttpApp(app, 'http://localhost:5173');
+    await app.init();
+  } else {
+    await module.init();
+  }
 
   const connection = module.get<Connection>(getConnectionToken());
 
-  return {
+  const harness: Harness = {
     module,
     clock,
     mailer,
@@ -97,9 +112,11 @@ export async function createHarness(
     model: <T>(name: string) => module.get<Model<T>>(getModelToken(name)),
     async close() {
       await connection.dropDatabase();
-      await module.close();
+      await (app ?? module).close();
     },
   };
+
+  return app ? { ...harness, app } : harness;
 }
 
 export interface World {

@@ -38,6 +38,18 @@ export class EventRepository {
     return doc ? toRecord(doc) : null;
   }
 
+  /** Seed only: create or replace a demo event by name. */
+  async upsertByName(input: Omit<EventRecord, 'id'>): Promise<EventRecord> {
+    const doc = await this.events
+      .findOneAndUpdate(
+        { name: input.name },
+        { $set: { ...input, organizerId: new Types.ObjectId(input.organizerId) } },
+        { upsert: true, returnDocument: 'after', runValidators: true },
+      )
+      .exec();
+    return toRecord(doc);
+  }
+
   async listByOrganizer(organizerId: string): Promise<EventRecord[]> {
     if (!Types.ObjectId.isValid(organizerId)) return [];
     const docs = await this.events

@@ -3,6 +3,7 @@ import { InjectConnection, MongooseModule } from '@nestjs/mongoose';
 import type { Connection } from 'mongoose';
 
 import { AuditRepository } from './audit.repository.js';
+import { DatabaseHealth } from './database-health.js';
 import { EventRepository } from './event.repository.js';
 import { OutboxRepository } from './outbox.repository.js';
 import {
@@ -23,6 +24,7 @@ import { UserRepository } from './user.repository.js';
 
 const REPOSITORIES = [
   AuditRepository,
+  DatabaseHealth,
   EventRepository,
   OutboxRepository,
   TicketRepository,
