@@ -49,3 +49,59 @@ The three hooks carry over. `guard-secrets.mjs` and `precommit-check.mjs` are un
 positive: application services *must* be allowed to import repositories, which live under
 `infrastructure/`. A rule that blocks the correct import gets switched off within a day, and
 then it blocks nothing.
+
+---
+
+## Session 2 — 2026-10-29 — state machine, persistence, outbox, dispatcher
+
+### Toolchain decisions forced by the stack
+
+- **NestJS 12 ships as ES modules**, so the API is ESM end to end, with `.js` extensions on
+  relative imports.
+- **There is a build step**, unlike procure-flow. Node 24 can strip types but not decorators,
+  and Nest's dependency injection needs decorator metadata.
+- **TypeScript 6, not 7.** TypeScript 7 is current, but the Nest CLI pins `~6.0`, and a
+  compiler the framework's own tooling does not support is a problem to have on purpose, not
+  by default.
+- **Vitest needs SWC here.** Its default transform does not emit decorator metadata, so Nest
+  could not resolve a single constructor parameter. `unplugin-swc` reads the decorator
+  settings from `tsconfig.json`, so there is one source of truth for them.
+
+### Mutation checks before the first domain commit
+
+Rather than trusting a green suite, the state machine was broken three ways on purpose: the
+end of the entry window made inclusive, the wrong-event scope check removed, and the
+`ALREADY_REDEEMED` special case removed. Each turned the suite red (1, 2 and 3 failing tests
+respectively) and each was reverted before the commit. A negative test that still passes with
+its rule deleted is decoration.
+
+### The race test proved something other than what I expected
+
+The double-scan test fires two redemptions of one ticket concurrently, five rounds. It passed
+first time, and the loser was refused with `ALREADY_REDEEMED`, not `CONFLICT`.
+
+That was the surprise worth recording. Inside a MongoDB transaction, the losing write hits a
+write conflict, the driver retries the whole callback, the re-read sees `REDEEMED`, and the
+state machine explains the refusal properly. So the test was proving the *transaction retry*,
+and would have kept passing if someone deleted the status from the conditional update's
+filter — the guard that protects any caller who forgets the transaction.
+
+Fixed by giving the guard its own test: apply a transition decided against a status the ticket
+no longer has, and assert it matches nothing. A test that passes is not the same as a test
+that pins the thing you think it pins.
+
+### Atomicity is tested by breaking it
+
+Issuing writes three documents in one transaction. The test for that does not just count
+documents after a success; it makes the third write fail and asserts that the first two are
+gone too. Counting after a success would pass just as well if the writes were three separate
+operations.
+
+### Smaller things the compiler and the tools caught
+
+- **A Mongoose field validator comparing two fields** failed to typecheck: field validators
+  also run on update queries, where `this` is a `Query`, not the document. Moved to a
+  document-level `pre('validate')` hook, which is what the rule actually is.
+- **npm 11 now blocks install scripts by default**, so `mongodb-memory-server` did not
+  download its MongoDB binary at install time. It fetches it on the first test run instead;
+  the test hook timeout allows for that.

@@ -24,6 +24,7 @@ import {
   Role,
   TicketAction,
   TicketStatus,
+  type Actor,
   type TicketSnapshot,
   type TransitionInput,
   type TransitionResult,
@@ -116,6 +117,29 @@ export const TERMINAL_STATUSES: readonly TicketStatus[] = Object.values(TicketSt
 
 export function findRule(from: TicketStatus, action: TicketAction): TransitionRule | undefined {
   return TRANSITIONS.find((rule) => rule.from === from && rule.action === action);
+}
+
+/**
+ * Decide whether `actor` may issue a ticket for an event, and the status it starts in.
+ *
+ * Issuing is not a transition — there is no status before it — but it is still a decision,
+ * so it lives here beside the others, and the initial status is decided here rather than
+ * written as a literal wherever tickets are created.
+ */
+export function decideIssue(
+  actor: Actor,
+  event: { readonly organizerId: string },
+): TransitionResult {
+  if (actor.role !== Role.Organizer) {
+    throw new DomainError(DomainErrorCode.ForbiddenRole, `Role ${actor.role} may not issue a ticket.`);
+  }
+  if (actor.id !== event.organizerId) {
+    throw new DomainError(
+      DomainErrorCode.NotEventOrganizer,
+      "Only the event's organizer may issue tickets for it.",
+    );
+  }
+  return { nextStatus: TicketStatus.Issued };
 }
 
 /**

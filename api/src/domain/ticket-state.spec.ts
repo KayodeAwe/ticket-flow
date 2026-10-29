@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DomainError, DomainErrorCode } from './errors.js';
-import { decideTransition, findRule, TERMINAL_STATUSES } from './ticket-state.js';
+import { decideIssue, decideTransition, findRule, TERMINAL_STATUSES } from './ticket-state.js';
 import {
   ALL_ACTIONS,
   ALL_ROLES,
@@ -152,6 +152,26 @@ describe('transition table completeness', () => {
   it('treats REDEEMED and CANCELLED as terminal', () => {
     expect([...TERMINAL_STATUSES].sort()).toEqual(
       [TicketStatus.Cancelled, TicketStatus.Redeemed].sort(),
+    );
+  });
+});
+
+describe('issue', () => {
+  const event = { organizerId: ORGANIZER_ID };
+
+  it("starts a ticket in ISSUED for the event's organizer", () => {
+    expect(decideIssue(organizer(), event)).toEqual({ nextStatus: TicketStatus.Issued });
+  });
+
+  for (const role of [Role.Scanner, Role.System] as const) {
+    it(`refuses ${role}`, () => {
+      refusedWith(DomainErrorCode.ForbiddenRole, () => decideIssue(inScope(role), event));
+    });
+  }
+
+  it('refuses an organizer who does not own the event', () => {
+    refusedWith(DomainErrorCode.NotEventOrganizer, () =>
+      decideIssue(organizer('user-another-organizer'), event),
     );
   });
 });
