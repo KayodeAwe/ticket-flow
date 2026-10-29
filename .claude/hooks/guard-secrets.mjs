@@ -29,9 +29,16 @@ const SECRET_PATTERNS = [
   },
 ];
 
-/** KEY = <long value> style assignments. */
+/** KEY = <long value> style assignments. Group 2 is the opening quote, if there is one. */
 const ASSIGNED_SECRET =
-  /\b(secret|token|password|passwd|api[_-]?key|private[_-]?key|credentials?)\s*[:=]\s*["'`]?([^\s"'`,;]{16,})["'`]?/gi;
+  /\b(secret|token|password|passwd|api[_-]?key|private[_-]?key|credentials?)\s*[:=]\s*(["'`])?([^\s"'`,;]{16,})["'`]?/gi;
+
+/**
+ * Source files, where an unquoted right-hand side is an expression, not a value:
+ * `secret: randomBytes(48).toString('base64url')` generates a secret, it does not contain one.
+ * In a config file (YAML, .properties, a dotenv lookalike) an unquoted value *is* the value.
+ */
+const CODE_FILE = /\.(?:[cm]?[jt]sx?)$/;
 
 function block(reason) {
   process.stderr.write(`[guard-secrets] BLOCKED: ${reason}\n`);
@@ -79,8 +86,9 @@ for (const { label, re } of SECRET_PATTERNS) {
 }
 
 for (const match of content.matchAll(ASSIGNED_SECRET)) {
-  const [, key, value] = match;
+  const [, key, quote, value] = match;
   if (PLACEHOLDER.test(value)) continue;
+  if (!quote && CODE_FILE.test(name)) continue;
   block(
     `"${key}" is assigned a literal ${value.length}-character value in ${name || 'this file'}. ` +
       `Read it from the environment, or use a placeholder that starts with "replace-me".`,

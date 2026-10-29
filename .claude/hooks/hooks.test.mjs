@@ -93,6 +93,28 @@ describe('guard-secrets', () => {
     assert.equal(status, BLOCKED);
   });
 
+  test('allows a secret generated at runtime in code', () => {
+    // The false positive found while writing the API test harness: a signing key generated
+    // per test run matched the "long literal" pattern, because the regex saw
+    // `randomBytes(48).toString(` as a 25-character value.
+    const { status } = runHook(
+      'guard-secrets.mjs',
+      write(
+        '/repo/api/test/support/harness.ts',
+        "useValue({ secret: randomBytes(48).toString('base64url'), ttlMinutes: 5 })",
+      ),
+    );
+    assert.equal(status, ALLOWED);
+  });
+
+  test('still blocks an unquoted literal in a config file', () => {
+    const { status } = runHook(
+      'guard-secrets.mjs',
+      write('/repo/deploy/values.yaml', 'password: Zx91kQ8vLpR2mN4tYw7Bc0Hj\n'),
+    );
+    assert.equal(status, BLOCKED);
+  });
+
   test('allows a secret read from the environment', () => {
     const { status } = runHook(
       'guard-secrets.mjs',
