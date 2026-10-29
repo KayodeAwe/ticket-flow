@@ -167,3 +167,31 @@ before launching it again, and leave the user's desktop applications to the user
 Everything from the domain to the HTTP contract is verified by the unit and integration
 suites against a real MongoDB replica set. The containers, the nginx proxy, the dispatcher
 talking to real SMTP, and the browser journey are not — until the stack has been brought up.
+
+---
+
+## Session 4 — 2026-10-29 — the stack, for real
+
+Docker Desktop was started by me, from its own window, after the reset — slowly; the engine
+took several minutes to answer. Then, from a clean volume:
+
+- **`docker compose up --build --wait` exited 0 first time.** Every healthcheck passed, the
+  seed exited 0, and no service logged a warning. The two lessons procure-flow paid for in CI
+  were built in from the start here — the API depends on the seed with
+  `service_completed_successfully`, and the nginx healthcheck uses `127.0.0.1` — so this is
+  where they paid off rather than where they were learned.
+- **A deep-link refresh** (`/tickets/abc` straight to nginx) returns the app, not a 404.
+- **The Playwright journey passed first time**: issue, delivery asserted in Mailpit's API with
+  the code in the email body, admit at Gate A, refuse twice with "Gate A" named, "wrong event"
+  for the other event's scanner without naming the gate, ISSUED → SENT → REDEEMED in the
+  trail; and the cancelled ticket refused.
+- **Then again, on the now non-empty database, with three dispatcher replicas** competing for
+  the outbox. Both journeys passed; the dispatcher logs show each of the four tickets delivered
+  exactly once, Mailpit holds exactly four emails, and the health endpoint reports nothing
+  pending or failed.
+
+A first-time pass is not a reason to trust a test, so it is worth saying what these assert
+that a vacuous pass would not: the email lookup is by a per-run unique address and expects
+exactly one message; every verdict assertion is scoped to the verdict panel; and the wrong-event
+check asserts the *absence* of the gate name, which is the disclosure rule, not just a word on
+screen.
