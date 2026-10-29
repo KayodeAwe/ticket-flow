@@ -1,0 +1,13 @@
+{
+  "name": "ticket-flow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "One vertical slice of ticket fulfillment: issue a ticket, deliver it through a transactional outbox, and invalidate it exactly once at the gate.",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "setup": "npm install"
+  },
+  "license": "MIT"
+}

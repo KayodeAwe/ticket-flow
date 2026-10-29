@@ -1,0 +1,23 @@
+# Normalise line endings. This repo is developed on Windows and runs in Linux
+# containers: a shell script committed with CRLF fails inside the container with
+# a "\r: not found" error that looks nothing like a line-ending problem.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.js   text eol=lf
+*.ts   text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+*.html text eol=lf
+*.scss text eol=lf
+
+Dockerfile      text eol=lf
+*.Dockerfile    text eol=lf
+.env.example    text eol=lf
+
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.woff2 binary
